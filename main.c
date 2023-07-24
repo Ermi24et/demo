@@ -8,101 +8,136 @@
 
 /* declaring an external environment variables */
 extern char **environ;
+int MAX_PATH_LEN = 1024;
 
 /* function prototypes for our shell */
 void print_environment(void);
-int cmd_ok(char **tok_str, int count, char *glptr, char **argv);
-void free_str(char *str);
-void free_mem(char **tok);
+int cmd_ok(char **tok_str, int count, char **argv);
 void c_execute(char **comm);
 char **comm_tok(char *str, char *delimiters);
 char *_getenv(const char *name);
 char *find_path(char *command);
 void handle_error(char *pro_name, char *com, int counter);
-int count_strings(char *str, char *delimiters);
+int count_str(char *str, char *delimiters);
+void signal_handler(int signal);
+char *_prompt(char *prompt);
 
 /* function prototypes for utility functions */
 char *int_to_str(int val);
 int _strlen(const char *s);
 int _strcmp(char *s1, char *s2);
 int _strncmp(const char *str1, const char *str2, size_t n);
-char *_strcpy(char *dest, char *src, int n);
+char *_strcpy(char *dest, char *src);
 char *_strncpy(char *dest, char *src, int n);
 char *_strdup(char *str);
+
+/**
+* signal_handler - Handles Ctrl C signal
+* @signal: Signal parameter
+* Return: void
+*/
+
+void signal_handler(int signal)
+{
+        if (signal == SIGINT)
+        {
+                write(STDERR_FILENO, "\n$ ", 4);
+                fflush(stdout);
+        }
+}
+
+/**
+ * _prompt - it reads and promptes user
+ * @prompt: accepts sign
+ * Return: created line
+ */
+char *_prompt(char *prompt)
+{
+        char *glptr = NULL;
+	ssize_t gl_result;
+	size_t len = 0;
+
+        write(STDOUT_FILENO, prompt, _strlen(prompt));
+        gl_result = getline(&glptr, &len, stdin);
+
+        if (gl_result == -1)
+        {
+                write(STDOUT_FILENO, "\n", 1);
+		free(glptr);
+		exit(EXIT_FAILURE);
+        }
+        return (glptr);
+}
+
 /**
  * main - it reads and prases and executes
  * @argc: number of arguments
  * @argv: arguments
  * Return: Success(0)
  */
-
 int main(int argc __attribute__((unused)), char **argv)
 {
-	char *prompt = "$ ", *glptr = NULL, **tok_str;
-	size_t len = 0;
-	ssize_t gl_result;
-	int check_term = 1, count = 1;
+        char *prompt = "$ ", *glptr = NULL, **tok_str = NULL;
+        int check_term = 1, count = 1;
 
-	while (check_term)
-	{
-		if (isatty(STDIN_FILENO) == 1)
-			write(STDOUT_FILENO, prompt, _strlen(prompt));
-		gl_result = getline(&glptr, &len, stdin);
-		if (gl_result == -1)
-		{
-			free_str(glptr);
-			write(STDOUT_FILENO, "\n", 1);
-			break;
-		}
-		tok_str = comm_tok(glptr, " \n\r\t");
-		if (tok_str != NULL && tok_str[0] != NULL)
-		{
-			if (_strcmp(tok_str[0], "exit") == 0)
+        while (check_term)
+        {
+                signal(SIGINT, signal_handler);
+                if (isatty(STDIN_FILENO) == 1)
+                        glptr = _prompt(prompt);
+                tok_str = comm_tok(glptr, " \n\r\t");
+                if (tok_str != NULL && tok_str[0] != NULL)
+                {
+                        if (_strcmp(tok_str[0], "exit") == 0)
+                        {
+				free(tok_str[0]);
+				free(tok_str);
+                                break;
+                        }
+                        if (_strcmp(tok_str[0], "env") == 0)
+                        {
+				free(tok_str[0]);
+                                print_environment();
+				free(tok_str);
+                                continue;
+                        }
+			if (cmd_ok(tok_str, count, argv))
 			{
-				free_mem(tok_str);
-				break;
-			}
-			if (_strcmp(tok_str[0], "env") == 0)
-			{
-				print_environment();
-				continue;
-			}
-			if (cmd_ok(tok_str, count, glptr, argv))
 				c_execute(tok_str);
+				if (glptr[0] != '/')
+					free(glptr);
+				free(tok_str[0]);
+			}
 		}
-		/*free_str(glptr);*/
-		free_mem(tok_str);
+		free(tok_str);
 		count++;
 	}
 	return (0);
 }
 
 /**
- * cmd_ok - checks the first thing
+ * cmd_ok - checks the first character
  * @tok_str: tokenized string
  * @count: counter of execution
- * @glptr: as command
  * @argv: entered command
  * Return: Success(1), Fail(0)
  */
 
-int cmd_ok(char **tok_str, int count, char *glptr, char **argv)
+int cmd_ok(char **tok_str, int count, char **argv)
 {
-	char *path;
+	char *path = NULL;
 
 	if (tok_str[0][0] != '/')
 	{
 		path = find_path(tok_str[0]);
 		if (path != NULL)
 		{
-			tok_str[0] = strdup(path);
-			free_str(path);
+			tok_str[0] = _strdup(path);;
+			free(path);
 		}
 		else
 		{
 			handle_error(argv[0], tok_str[0], count);
-			free_str(glptr);
-			free_mem(tok_str);
 			return (0);
 		}
 	}
@@ -110,45 +145,63 @@ int cmd_ok(char **tok_str, int count, char *glptr, char **argv)
 }
 
 /**
- * free_mem - it free memory
- * @tok: double pointer
- * Return: void
- */
-
-void free_mem(char **tok)
-{
-	int i;
-
-	i = 0;
-	if (tok == NULL)
-		return;
-	while (tok[i] != NULL)
-	{
-      		free(tok[i]);
-      		i++;
-	}
-	free(tok);
-}
-
-/**
- * free_str - it free memory
- * @str: pointer to be freed
- * Return: void
- */
-
-void free_str(char *str)
-{
-	if (str == NULL)
-		return;
-	free(str);
-}
-/**
  * comm_tok - tokenizes a string
- * @input: the string to parse
+ * @str: the string to parse
+ * @delimiters: delimiters used to parse
  * Return: tokenized string
  */
 
-int count_strings(char *str, char *delimiters)
+char **comm_tok(char *str, char *delimiters)
+{
+        char *token = NULL;
+        char **tokens = NULL;
+        int num_words, str_len, i = 0;
+
+        if (str == NULL)
+                return (NULL);
+
+        str_len = _strlen(str);
+
+        token = malloc((str_len + 1) * sizeof(char));
+
+        if (token == NULL)
+                return (NULL);
+
+        _strncpy(token, str, str_len);
+        token[str_len] = '\0';
+
+        num_words = count_str(token, delimiters);
+        free(token);
+
+        if (num_words == 0)
+                return (NULL);
+
+        tokens = malloc(sizeof(char *) * (num_words + 1));
+
+        if (!tokens)
+                return (NULL);
+
+        str = strtok(str, delimiters);
+
+        while (str)
+        {
+                tokens[i++] = str;
+                str = strtok(NULL, delimiters);
+        }
+	tokens[i] = NULL;
+
+        return (tokens);
+
+}
+
+/**
+* count_str - Counts group of characters in str
+* @str: String parameter
+* @delimiters: delimiters used to parse
+* Return: number of characters
+*/
+
+int count_str(char *str, char *delimiters)
 {
 	char *str_copy = NULL;
 	char *token = NULL;
@@ -162,7 +215,7 @@ int count_strings(char *str, char *delimiters)
 	if (str_copy == NULL)
 		return (0);
 
-	strcpy(str_copy, str);
+	_strcpy(str_copy, str);
 
 	token = strtok(str_copy, delimiters);
 
@@ -179,57 +232,6 @@ int count_strings(char *str, char *delimiters)
 }
 
 /**
-* split_str - Splits string in to parameters using strtok
-* @str: String parameter
-* @delimiters: Split delimiters
-* Return: Pointer to array of strings
-*/
-
-char **comm_tok(char *str, char *delimiters)
-{
-	char *token = NULL;
-	char **tokens = NULL;
-	int num_words, str_len, i = 0;
-
-	if (str == NULL)
-		return (NULL);
-
-	str_len = _strlen(str);
-
-	token = malloc((str_len + 1) * sizeof(char));
-
-	if (token == NULL)
-		return (NULL);
-
-	_strncpy(token, str, str_len);
-	token[str_len] = '\0';
-
-	num_words = count_strings(token, delimiters);
-	free(token);
-
-	if (num_words == 0)
-		return (NULL);
-
-	tokens = malloc(sizeof(char *) * (num_words + 1));
-
-	if (!tokens)
-		return (NULL);
-
-	str = strtok(str, delimiters);
-
-	while (str)
-	{
-		tokens[i++] = str;
-		str = strtok(NULL, delimiters);
-	}
-
-	tokens[i] = NULL;
-
-	return (tokens);
-
-}
-
-/**
  * find_path - it finds the command in the PATH
  * @command: a command to find
  * Return: full path
@@ -237,12 +239,16 @@ char **comm_tok(char *str, char *delimiters)
 
 char *find_path(char *command)
 {
-	char *path = _getenv("PATH");
-	char *directory = strtok(strdup(path),":");
-	char *fullpath = malloc(1024 * sizeof(char));
-	int MAX_PATH_LEN = 1024;
+	char *path = NULL;
+	char *directory = NULL;
+	char *fullpath = NULL;
 	int dir_len, cmd_len, total_len;
+	char *tmp = NULL;
 
+	path = _getenv("PATH");
+	tmp = _strdup(path);
+	directory = strtok(tmp,":");
+	fullpath = malloc(MAX_PATH_LEN * sizeof(char));
 	while (directory != NULL)
 	{
 		dir_len = _strlen(directory);
@@ -258,13 +264,17 @@ char *find_path(char *command)
 		}
 		if (access(fullpath, X_OK) == 0)
 		{
+			free(tmp);
 			return (fullpath);
 		}
 		directory = strtok(NULL, ":");
 	}
-	free_str(fullpath);
+	free(fullpath);
+	free(directory);
+	free(tmp);
 	return (NULL);
 }
+
 /**
  * _getenv - retrieves the value of an environment variable
  * @name: name of the variable
@@ -275,12 +285,12 @@ char *_getenv(const char *name)
 {
 	int i;
 	char *env_var;
-	int name_len = strlen(name);
+	int name_len = _strlen(name);
 
 	for (i = 0; environ[i] != NULL; i++)
 	{
 		env_var = environ[i];
-		if (strncmp(name, env_var, name_len) == 0 && env_var[name_len] == '=')
+		if (_strncmp(name, env_var, name_len) == 0 && env_var[name_len] == '=')
 		{
 			return (env_var + name_len + 1);
 		}
@@ -327,7 +337,7 @@ void handle_error(char *pro_name, char *com, int counter)
 	write(STDOUT_FILENO, separator, _strlen(separator));
 	write(STDOUT_FILENO, not_found, _strlen(not_found));
 
-	free_str(loop_count);
+	free(loop_count);
 }
 
 /**
@@ -473,16 +483,29 @@ char *_strncpy(char *dest, char *src, int n)
 
 	return (dest);
 }
+/**
+ * _strcpy - copy the string pointed to by src to dest
+ * @dest: char to check
+ *@src: char to check
+ * Return: the value of the pointer to dest.
+ */
+char *_strcpy(char *dest, char *src)
+{
+	int a;
 
+	for (a = 0; src[a] != '\0'; a++)
+		dest[a] = src[a];
+	dest[a] = '\0';
+	return (dest);
+}
 /**
  * _strdup - a function that returns a pointer to a newly allocated space
  * @str: a string to be copied
  * Return: returns a pointer or NULL if insufficient memory
  */
-
 char *_strdup(char *str)
 {
-	char *res;
+	char *res = NULL;
 	int i = 0, j = 0;
 
 	if (str == NULL)
@@ -494,6 +517,6 @@ char *_strdup(char *str)
 		return (NULL);
 	for (j = 0; str[j]; j++)
 		res[j] = str[j];
+	res[j] = '\0';
 	return (res);
 }
-
